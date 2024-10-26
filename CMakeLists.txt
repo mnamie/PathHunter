@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.20)
 project(PathHunter)
 
+set(CMAKE_SYSTEM "Windows")
+
 message("Generated with config types: ${CMAKE_CONFIGURATION_TYPES}")
 message("Source dir: ${CMAKE_SOURCE_DIR}")
 set(CMAKE_INSTALL_PREFIX "${CMAKE_SOURCE_DIR}")
