@@ -18,9 +18,9 @@ int fetch_path_env_variable(const char *path_str, const int *buffer_size)
     );
 }
 
-int check_path_file_exists(const char *path)
+static int check_path_file_exists(const char *path)
 {
-    struct stat file_stats;
+    static struct stat file_stats;
     return stat(path, &file_stats);
 }
 
