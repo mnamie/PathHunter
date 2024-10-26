@@ -26,21 +26,23 @@ int check_path_file_exists(const char *path)
 
 void check_path_str(char *path_str) 
 {
-    char* ptr = strtok(path_str, ";");
+    char *token = NULL;
+    char *next_token = NULL;
     int all_clean_flag = 1;
     int exists_flag = 0;
 
     printf("\nMissing Path targets:\n");
 
-    while (ptr != NULL) 
+    token = strtok_s(path_str, ";", &next_token);
+    while (token != NULL) 
     {
-        exists_flag = check_path_file_exists(ptr);
+        exists_flag = check_path_file_exists(token);
         if (exists_flag == -1)
         {
             all_clean_flag = 0;
-            printf(" [*] %s\n", ptr);
+            printf(" [*] %s\n", token);
         }
-        ptr = strtok(NULL, ";");
+        token = strtok_s(NULL, ";", &next_token);
     }
 
     if (all_clean_flag)
