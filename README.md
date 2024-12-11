@@ -11,7 +11,7 @@ Missing Path targets:
  [*] C:\Oops\Someone\Left\A\Stale\Target
 ```
 
-## Buid instructions using a UNIX environment or PowerShell:
+## Buid instructions:
 1. `cargo build --release`
 
 ## FAQ:
