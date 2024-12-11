@@ -1,0 +1,25 @@
+# Build output
+build/
+bin/
+
+# Stray object/library files outside build/
+*.o
+*.a
+*.so
+*.d
+
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
+
+# Editor temporaries
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# Claude Code
+.claude/
