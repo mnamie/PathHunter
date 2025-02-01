@@ -28,18 +28,17 @@ impl PathEnvVar {
     }
 
     pub fn print(self: &Self) {
-        println!("Path: [");
-        match self.print_type {
+        let iter_target = match self.print_type {
             PrintType::Base => {
-                for path in self.vec.iter() {
-                    println!(" {}", path);
-                }
+                &self.vec
             },
             PrintType::Cleaned => {
-                for path in self.cleaned_vec.iter() {
-                    println!(" {}", path);
-                }
-            },
+                &self.cleaned_vec
+            }
+        };
+        println!("Path: [");
+        for path in iter_target.iter() {
+            println!(" {}", path);
         }
         println!("]");
     }
