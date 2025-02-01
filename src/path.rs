@@ -31,12 +31,12 @@ impl PathEnvVar {
         println!("Path: [");
         match self.print_type {
             PrintType::Base => {
-                for path in self.vec.clone() {
+                for path in self.vec.iter() {
                     println!(" {}", path);
                 }
             },
             PrintType::Cleaned => {
-                for path in self.cleaned_vec.clone() {
+                for path in self.cleaned_vec.iter() {
                     println!(" {}", path);
                 }
             },
