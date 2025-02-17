@@ -44,13 +44,13 @@ void PrintCleanedPathStr(char *path_str)
 void CheckPathStr(char *path_str) 
 {
     char *token = NULL;
-    char *next_token = NULL;
+    char *nextToken = NULL;
     int allCleanFlag = 1;
     int existsFlag = 0;
 
     printf("\nMissing Path targets:\n");
 
-    token = strtok_s(path_str, ";", &next_token);
+    token = strtok_s(path_str, ";", &nextToken);
     while (token != NULL) 
     {
         existsFlag = CheckPathFileExists(token);
@@ -59,7 +59,7 @@ void CheckPathStr(char *path_str)
             allCleanFlag = 0;
             printf(" [*] %s\n", token);
         }
-        token = strtok_s(NULL, ";", &next_token);
+        token = strtok_s(NULL, ";", &nextToken);
     }
 
     if (existsFlag)
