@@ -62,8 +62,8 @@ void CheckPathStr(char *path_str)
         token = strtok_s(NULL, ";", &nextToken);
     }
 
-    if (existsFlag)
+    if (allCleanFlag)
     {
-        printf("\n [*] None! All clean!\n");
+        printf(" [*] None! All clean!\n");
     }
 }
