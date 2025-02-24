@@ -1,68 +1,65 @@
-use winreg::enums::HKEY_LOCAL_MACHINE;
+use crate::reg;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum PrintType {
     Base,
     Cleaned,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct PathEnvVar {
-    str: String,
     vec: Vec<String>,
     cleaned_vec: Vec<String>,
+    new_vec: Vec<String>,
     print_type: PrintType,
+    reg_type: reg::RegistryType,
 }
 
 impl PathEnvVar {
-    pub fn new(print_type: PrintType) -> Self {
-        let path_str = fetch_path_string();
+    pub fn new(print_type: PrintType, reg_type: reg::RegistryType) -> Self {
+        let path_str = reg::fetch_path_string(reg_type);
         let path_vec = split_path_string_to_vec(&path_str);
         let cleaned_vec = clean_path_vec(&path_vec);
         PathEnvVar {
-            str: path_str,
             vec: path_vec,
             cleaned_vec: cleaned_vec,
+            new_vec: vec![],
             print_type: print_type,
+            reg_type: reg_type,
         }
     }
 
     pub fn print(self: &Self) {
-        println!("Path: [");
-        match self.print_type {
-            PrintType::Base => {
-                for path in self.vec.clone() {
-                    println!(" {}", path);
-                }
-            },
-            PrintType::Cleaned => {
-                for path in self.cleaned_vec.clone() {
-                    println!(" {}", path);
-                }
-            },
+        let iter_target = match self.print_type {
+            PrintType::Base => &self.vec,
+            PrintType::Cleaned => &self.cleaned_vec,
+        };
+        println!("\nPATH: [");
+        for path in iter_target.iter() {
+            println!(" {}", path);
         }
         println!("]");
     }
 
-    pub fn validate(self: &Self) {
+    pub fn validate(self: &mut Self) {
         let mut all_clear: bool = true;
-        println!("Missing path targets:");
+        println!("\nMissing path targets:");
         for path in self.cleaned_vec.clone() {
             if !std::fs::metadata(&path).is_ok() {
                 all_clear = false;
                 println!(" [*] {}", path);
+            } else {
+                self.new_vec.push(path);
             };
         }
-        if all_clear {println!(" [*] All clear")}
+        if all_clear {
+            println!(" [*] All clear")
+        }
     }
-}
 
-fn fetch_path_string() -> String {
-    winreg::RegKey::predef(HKEY_LOCAL_MACHINE)
-        .open_subkey("SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment")
-        .expect("Error: Unable to fetch registry subkey")
-        .get_value("Path")
-        .expect("Error: Unable to fetch registry path key")
+    pub fn write_clean_path(&self) {
+        reg::set_path_string(self.reg_type, &self.new_vec.join(";"));
+    }
 }
 
 fn split_path_string_to_vec(path_str: &str) -> Vec<String> {
