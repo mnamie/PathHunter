@@ -26,15 +26,15 @@ impl PathEnvVar {
         let cleaned_vec = clean_path_vec(&path_vec);
         PathEnvVar {
             vec: path_vec,
-            cleaned_vec: cleaned_vec,
+            cleaned_vec,
             new_vec: vec![],
-            print_type: print_type,
-            reg_type: reg_type,
+            print_type,
+            reg_type,
         }
     }
 
     /// Print the Path, as dicatated by the configured PrintType
-    pub fn print(self: &Self) {
+    pub fn print(&self) {
         let iter_target = match self.print_type {
             PrintType::Base => &self.vec,
             PrintType::Cleaned => &self.cleaned_vec,
@@ -47,17 +47,15 @@ impl PathEnvVar {
     }
 
     /// Validate the Path for missing path targets
-    pub fn validate(self: &mut Self) {
+    pub fn validate(&mut self) {
         let mut all_clear: bool = true;
         println!("\nMissing path targets:");
         for path in self.cleaned_vec.clone() {
-            if !std::fs::metadata(&path).is_ok() {
+            if std::fs::metadata(&path).is_err() {
                 all_clear = false;
                 println!(" [*] {}", path);
-            } else {
-                if !self.new_vec.contains(&path) {
-                    self.new_vec.push(path);
-                }
+            } else if !self.new_vec.contains(&path) {
+                self.new_vec.push(path);
             };
         }
         if all_clear {
@@ -74,7 +72,7 @@ impl PathEnvVar {
 fn split_path_string_to_vec(path_str: &str) -> Vec<String> {
     path_str
         .split(";")
-        .filter(|s| *s != "")
+        .filter(|s| !s.is_empty())
         .map(|s| s.to_owned())
         .collect()
 }
