@@ -5,13 +5,13 @@ mod reg;
 fn main() {
     let cli_flags = cli::parse_command_line_flags();
 
-    let print_type = if cli_flags.contains(&("-b".to_owned())) {
+    let print_type = if cli_flags.contains(&String::from("-b")) {
         path::PrintType::Base
     } else {
         path::PrintType::Cleaned
     };
 
-    let reg_type = if cli_flags.contains(&("-s".to_owned())) {
+    let reg_type = if cli_flags.contains(&String::from("-s")) {
         reg::RegistryType::Sys
     } else {
         reg::RegistryType::User
@@ -22,7 +22,7 @@ fn main() {
     path.print();
     path.validate();
 
-    if cli_flags.contains(&("-w".to_owned())) {
+    if cli_flags.contains(&String::from("-w")) {
         path.write_clean_path();
     }
 }

@@ -1,11 +1,14 @@
 use crate::reg;
 
+/// PrintType denotes whether the clean or base Path should be printed
 #[derive(Debug, Clone, Copy)]
 pub enum PrintType {
     Base,
     Cleaned,
 }
 
+/// PathEnvVar contains the various versions of the Path environment variable
+/// that we want to use for displaying and/or writing.
 #[derive(Debug, Clone)]
 pub struct PathEnvVar {
     vec: Vec<String>,
@@ -16,6 +19,7 @@ pub struct PathEnvVar {
 }
 
 impl PathEnvVar {
+    /// Create a new instance of PathEnvVar based on PrintType and RegistryType
     pub fn new(print_type: PrintType, reg_type: reg::RegistryType) -> Self {
         let path_str = reg::fetch_path_string(reg_type);
         let path_vec = split_path_string_to_vec(&path_str);
@@ -29,18 +33,20 @@ impl PathEnvVar {
         }
     }
 
+    /// Print the Path, as dicatated by the configured PrintType
     pub fn print(self: &Self) {
         let iter_target = match self.print_type {
             PrintType::Base => &self.vec,
             PrintType::Cleaned => &self.cleaned_vec,
         };
-        println!("\nPATH: [");
+        println!("\nPath: [");
         for path in iter_target.iter() {
             println!(" {}", path);
         }
         println!("]");
     }
 
+    /// Validate the Path for missing path targets
     pub fn validate(self: &mut Self) {
         let mut all_clear: bool = true;
         println!("\nMissing path targets:");
@@ -49,7 +55,9 @@ impl PathEnvVar {
                 all_clear = false;
                 println!(" [*] {}", path);
             } else {
-                self.new_vec.push(path);
+                if !self.new_vec.contains(&path) {
+                    self.new_vec.push(path);
+                }
             };
         }
         if all_clear {
@@ -57,6 +65,7 @@ impl PathEnvVar {
         }
     }
 
+    /// After removing dead links and duplicates, write the corrected Path
     pub fn write_clean_path(&self) {
         reg::set_path_string(self.reg_type, &self.new_vec.join(";"));
     }
@@ -72,10 +81,10 @@ fn split_path_string_to_vec(path_str: &str) -> Vec<String> {
 
 fn clean_path_vec(path_vec: &Vec<String>) -> Vec<String> {
     let mut res: Vec<String> = vec![];
-    for path in path_vec.clone().iter_mut() {
+    for path in path_vec {
         let mut cleaned_str: String = path.to_owned();
         for (key, value) in std::env::vars() {
-            cleaned_str = cleaned_str.replace(&format!("%{}%", key.to_uppercase()), &value);
+            cleaned_str = path.replace(&format!("%{}%", key.to_uppercase()), &value);
         }
         res.push(cleaned_str);
     }
