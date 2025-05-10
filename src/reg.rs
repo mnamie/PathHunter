@@ -3,8 +3,8 @@ use winreg::enums::HKEY_LOCAL_MACHINE;
 use winreg::enums::KEY_ALL_ACCESS;
 use winreg::RegKey;
 
-const SYSTEM_KEY: &str = "SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment";
-const USER_KEY: &str = "Environment";
+const SYSTEM_KEY: &'static str = "SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment";
+const USER_KEY: &'static str = "Environment";
 
 /// Registry type can be either User or Sys, indicating whether to reference
 /// the system or user level environment variables

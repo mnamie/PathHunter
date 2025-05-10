@@ -3,25 +3,22 @@ mod path;
 mod reg;
 
 fn main() {
+    // Parse command line flags
     let cli_flags = cli::parse_command_line_flags();
 
-    let print_type = if cli_flags.contains(&String::from("-b")) {
-        path::PrintType::Base
-    } else {
-        path::PrintType::Cleaned
-    };
+    // Interpret command line flags to runtime options
+    let mut reg_type: Option<reg::RegistryType> = None;
+    let mut print_type: Option<path::PrintType> = None;
+    cli::interpret_command_line_flags(&cli_flags, &mut reg_type, &mut print_type);
 
-    let reg_type = if cli_flags.contains(&String::from("-s")) {
-        reg::RegistryType::Sys
-    } else {
-        reg::RegistryType::User
-    };
+    // Initialize path struct with options
+    let mut path = path::PathEnvVar::new(print_type.unwrap(), reg_type.unwrap());
 
-    let mut path = path::PathEnvVar::new(print_type, reg_type);
-
+    // Print and validate
     path.print();
     path.validate();
 
+    // Optionally; write a cleaned path when `-w` flag passed
     if cli_flags.contains(&String::from("-w")) {
         path.write_clean_path();
     }
