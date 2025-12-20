@@ -40,6 +40,7 @@ pub fn fetchPathEnvVariable(allocator: Allocator) ![]u8 {
 
     // Allocate buffer and defer cleanup
     const buffer = try allocator.alloc(u8, data_len);
+    defer allocator.free(buffer);
     const buffer_ptr: ?*u8 = @ptrCast(buffer.ptr);
 
     // Finally query registry key/value
