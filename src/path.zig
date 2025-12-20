@@ -55,6 +55,7 @@ pub const PathEnv = struct {
 
         var iter = std.mem.splitAny(u8, self.validation_path_str, ";");
         while (iter.next()) |word| {
+            if (word.len <= 1) continue;
             if (std.mem.containsAtLeast(u8, word, 1, "%")) continue;
             if (!utils.fileExists(word)) {
                 std.debug.print("\t{s}\n", .{word});
