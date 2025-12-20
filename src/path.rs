@@ -16,6 +16,7 @@ pub struct PathEnvVar {
     new_vec: Vec<String>,
     print_type: PrintType,
     reg_type: reg::RegistryType,
+    is_clean: bool,
 }
 
 impl PathEnvVar {
@@ -30,6 +31,7 @@ impl PathEnvVar {
             new_vec: vec![],
             print_type,
             reg_type,
+            is_clean: true,
         }
     }
 
@@ -48,24 +50,26 @@ impl PathEnvVar {
 
     /// Validate the Path for missing path targets
     pub fn validate(&mut self) {
-        let mut all_clear: bool = true;
         println!("\nMissing path targets:");
         for path in self.cleaned_vec.clone() {
             if std::fs::metadata(&path).is_err() {
-                all_clear = false;
+                self.is_clean = false;
                 println!(" [*] {}", path);
             } else if !self.new_vec.contains(&path) {
                 self.new_vec.push(path);
             };
         }
-        if all_clear {
+        if self.is_clean {
             println!(" [*] All clear")
         }
     }
 
     /// After removing dead links and duplicates, write the corrected Path
     pub fn write_clean_path(&self) {
-        reg::set_path_string(self.reg_type, &self.new_vec.join(";"));
+        if !self.is_clean {
+            reg::set_path_string(self.reg_type, &self.new_vec.join(";"));
+            println!("\n[*] Path has been cleaned");
+        }
     }
 }
 

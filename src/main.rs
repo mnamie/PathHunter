@@ -21,6 +21,5 @@ fn main() {
     // Optionally; write a cleaned path when `-w` flag passed
     if cli_flags.contains(&String::from("-w")) {
         path.write_clean_path();
-        println!("\n[*] Cleaned up path.");
     }
 }
