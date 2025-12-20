@@ -1,0 +1,7 @@
+.{
+    .name = .PathHunter,
+    .fingerprint = 0x7d7ccec1a4d4edfb,
+    .version = "0.1.0",
+    .minimum_zig_version = "0.15.0",
+    .paths = .{""},
+}
