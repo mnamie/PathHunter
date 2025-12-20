@@ -1,0 +1,11 @@
+[package]
+name = "PathHunterRS"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+winreg = "0.52.0"
+
+[[bin]]
+name = "ph"
+path = "src/main.rs"
