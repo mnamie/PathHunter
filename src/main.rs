@@ -1,6 +1,7 @@
 mod cli;
 mod path;
 mod reg;
+mod utils;
 
 fn main() {
     // Parse command line flags

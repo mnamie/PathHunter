@@ -16,7 +16,7 @@ pub enum RegistryType {
 
 /// Fetches the registry subkey based on the provided RegistryType
 fn registry_sub_key_fetch(registry_type: RegistryType) -> RegKey {
-    winreg::RegKey::predef(match registry_type {
+    let res = match winreg::RegKey::predef(match registry_type {
         RegistryType::Sys => HKEY_LOCAL_MACHINE,
         RegistryType::User => HKEY_CURRENT_USER,
     })
@@ -27,7 +27,15 @@ fn registry_sub_key_fetch(registry_type: RegistryType) -> RegKey {
         },
         KEY_ALL_ACCESS,
     )
-    .expect("Error: Unable to fetch registry subkey")
+    {
+        Ok(res) => res,
+        Err(_) => {
+            println!("Unable to open system registry, are you running with admin privileges?");
+            std::process::exit(1);
+        }
+    };
+
+    res
 }
 
 /// Fetches the Path environment variables as a String
