@@ -1,8 +1,9 @@
 use crate::reg;
 use crate::utils;
+use crate::cli;
 
 /// PrintType denotes whether the clean or base Path should be printed
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub enum PrintType {
     Base,
     Cleaned,
@@ -22,16 +23,16 @@ pub struct PathEnvVar {
 
 impl PathEnvVar {
     /// Create a new instance of PathEnvVar based on PrintType and RegistryType
-    pub fn new(print_type: PrintType, reg_type: reg::RegistryType) -> Self {
-        let path_str = reg::fetch_path_string(reg_type);
+    pub fn new(cli_options: &cli::CLI) -> Self {
+        let path_str = reg::fetch_path_string(cli_options.registry_type);
         let path_vec = utils::split_path_string_to_vec(&path_str);
         let cleaned_vec = utils::clean_path_vec(&path_vec);
         PathEnvVar {
             vec: path_vec,
             cleaned_vec,
             new_vec: vec![],
-            print_type,
-            reg_type,
+            print_type: cli_options.print_type,
+            reg_type: cli_options.registry_type,
             is_clean: true,
         }
     }
