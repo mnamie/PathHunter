@@ -5,6 +5,7 @@ use crate::path;
 
 const ALLOWED_FLAGS: [&'static str; 4] = ["-b", "-w", "-s", "-h"];
 
+/// Holds the state of CLI options passed into the program
 pub struct CLI {
     pub registry_type: reg::RegistryType,
     pub print_type: path::PrintType,
@@ -12,6 +13,7 @@ pub struct CLI {
 }
 
 impl CLI {
+    /// Parse command line flags into the CLI object for use downstream
     pub fn parse_command_line_flags() -> Self {
         let args: Vec<String> = env::args().collect();
         for arg in &args[1..] {
