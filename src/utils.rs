@@ -12,7 +12,10 @@ pub fn clean_path_vec(path_vec: &Vec<String>) -> Vec<String> {
     for path in path_vec {
         let mut cleaned_str: String = path.to_owned();
         for (key, value) in std::env::vars() {
-            cleaned_str = path.replace(&format!("%{}%", key.to_uppercase()), &value);
+            // Rust seems to have no easy way to do case insensitive matching
+            cleaned_str = cleaned_str.replace(&format!("%{}%", key.to_uppercase()), &value);
+            cleaned_str = cleaned_str.replace(&format!("%{}%", key.to_lowercase()), &value);
+            cleaned_str = cleaned_str.replace(&format!("%{}%", key), &value);
         }
         res.push(cleaned_str);
     }

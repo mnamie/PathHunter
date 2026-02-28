@@ -3,7 +3,7 @@ use std::{env, process::exit};
 use crate::reg;
 use crate::path;
 
-const ALLOWED_FLAGS: [&'static str; 4] = ["-b", "-w", "-s", "-h"];
+const ALLOWED_FLAGS: [&str; 4] = ["-b", "-w", "-s", "-h"];
 
 /// Holds the state of CLI options passed into the program
 pub struct CLI {
@@ -18,10 +18,10 @@ impl CLI {
         let args: Vec<String> = env::args().collect();
         for arg in &args[1..] {
             if arg == "-h" {
-                println!("Usage: ph [FLAGS]\n\nFLAGS:\n\t-h\tPrint usage\n\t-b\tPrint pre-populated Path (default is populated Path)\n\t-w\tWrite cleaned Path to registry (default is display only)\n\t-s\tPrint System Path (default is User Path; requires admin)");
+                println!("Usage: ph [FLAGS]\n\nFLAGS:\n\t-h\tPrint usage\n\t-b\tPrint raw Path (default is populated Path)\n\t-w\tWrite cleaned Path to registry (default is display only)\n\t-s\tPrint System Path (default is User Path; requires admin)");
                 exit(0);
             }
-            if !ALLOWED_FLAGS.contains(&(*arg).as_str()) {
+            if !ALLOWED_FLAGS.contains(&arg.as_str()) {
                 println!("Flag {arg} not supported");
                 exit(1);
             }
@@ -45,7 +45,7 @@ impl CLI {
         CLI { 
             registry_type: reg_type, 
             print_type: print_type, 
-            write: if args.contains(&String::from("-w")) { true } else { false} 
+            write: args.iter().any(|a| a == "-w")
         }
     }
 }
