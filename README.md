@@ -7,7 +7,7 @@ A cross-platform `PATH` auditor. Scans each entry in your `PATH` and reports dea
 
 ## Building
 
-Requires [Zig 0.15](https://ziglang.org/download/).
+Requires [Zig 0.16](https://ziglang.org/download/).
 
 ```sh
 zig build
