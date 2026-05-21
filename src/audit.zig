@@ -69,12 +69,14 @@ pub const Auditor = struct {
     seen: std.StringHashMap(u32),
     source_map: *const source.SourceMap,
     allocator: std.mem.Allocator,
+    io: std.Io,
 
-    pub fn init(allocator: std.mem.Allocator, sm: *const source.SourceMap) Auditor {
+    pub fn init(allocator: std.mem.Allocator, sm: *const source.SourceMap, io: std.Io) Auditor {
         return .{
             .seen = std.StringHashMap(u32).init(allocator),
             .source_map = sm,
             .allocator = allocator,
+            .io = io,
         };
     }
 
@@ -118,7 +120,7 @@ pub const Auditor = struct {
             };
         }
 
-        const state = try checkFilesystem(self.allocator, normed);
+        const state = try checkFilesystem(self.allocator, normed, self.io);
         return PathEntry{
             .path = path_dupe,
             .state = state,
@@ -128,7 +130,7 @@ pub const Auditor = struct {
 
     pub fn scan(self: *Auditor, raw_path: []const u8) ![]PathEntry {
         const sep: u8 = if (builtin.os.tag == .windows) ';' else ':';
-        var list = std.ArrayList(PathEntry){};
+        var list: std.ArrayList(PathEntry) = .empty;
         var it = std.mem.splitScalar(u8, raw_path, sep);
         while (it.next()) |seg| {
             try list.append(self.allocator, try self.classify(seg));
@@ -139,11 +141,11 @@ pub const Auditor = struct {
 
 // ── Filesystem classification ─────────────────────────────────────────────
 
-fn checkFilesystem(alloc: std.mem.Allocator, path: []const u8) !EntryState {
+fn checkFilesystem(alloc: std.mem.Allocator, path: []const u8, io: std.Io) !EntryState {
     if (builtin.os.tag == .windows) {
         return checkFilesystemWindows(alloc, path);
     } else {
-        return checkFilesystemUnix(alloc, path);
+        return checkFilesystemUnix(alloc, path, io);
     }
 }
 
@@ -185,22 +187,23 @@ fn checkFilesystemWindows(alloc: std.mem.Allocator, path: []const u8) !EntryStat
     return .file;
 }
 
-fn checkFilesystemUnix(alloc: std.mem.Allocator, path: []const u8) !EntryState {
-    const path_z = try alloc.dupeZ(u8, path);
-    const lst = std.posix.lstat(path_z) catch return .dead;
+fn checkFilesystemUnix(alloc: std.mem.Allocator, path: []const u8, io: std.Io) !EntryState {
+    const dir = std.Io.Dir.cwd();
+    const lst = dir.statFile(io, path, .{ .follow_symlinks = false }) catch return .dead;
 
-    if (std.posix.S.ISLNK(lst.mode)) {
-        const tst = std.posix.stat(path_z) catch return .dangling;
-        if (!std.posix.S.ISDIR(tst.mode)) return .dangling;
+    if (lst.kind == .sym_link) {
+        const tst = dir.statFile(io, path, .{}) catch return .dangling;
+        if (tst.kind != .directory) return .dangling;
 
         var target_buf: [4096]u8 = undefined;
-        const target_raw = std.posix.readlink(path_z, &target_buf) catch "(resolved)";
-        const target = try alloc.dupe(u8, target_raw);
-        return .{ .symlink = target };
+        const n = std.Io.Dir.readLinkAbsolute(io, path, &target_buf) catch {
+            return .{ .symlink = try alloc.dupe(u8, "(resolved)") };
+        };
+        return .{ .symlink = try alloc.dupe(u8, target_buf[0..n]) };
     }
 
-    if (std.posix.S.ISDIR(lst.mode)) return .ok;
-    if (std.posix.S.ISREG(lst.mode)) return .file;
+    if (lst.kind == .directory) return .ok;
+    if (lst.kind == .file) return .file;
     return .dead;
 }
 
@@ -221,7 +224,7 @@ test "scan splits on separator" {
     defer arena.deinit();
     const aa = arena.allocator();
     var sm = source.SourceMap.init(aa);
-    var a = Auditor.init(aa, &sm);
+    var a = Auditor.init(aa, &sm, std.testing.io);
     defer a.deinit();
 
     if (builtin.os.tag == .windows) {
@@ -238,7 +241,7 @@ test "empty segment classified as empty" {
     defer arena.deinit();
     const aa = arena.allocator();
     var sm = source.SourceMap.init(aa);
-    var a = Auditor.init(aa, &sm);
+    var a = Auditor.init(aa, &sm, std.testing.io);
     defer a.deinit();
     const e = try a.classify("");
     try std.testing.expect(e.state == .empty);
@@ -249,7 +252,7 @@ test "duplicate detection" {
     defer arena.deinit();
     const aa = arena.allocator();
     var sm = source.SourceMap.init(aa);
-    var a = Auditor.init(aa, &sm);
+    var a = Auditor.init(aa, &sm, std.testing.io);
     defer a.deinit();
 
     const path = if (builtin.os.tag == .windows) "C:\\Windows\\System32" else "/usr/bin";

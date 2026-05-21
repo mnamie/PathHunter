@@ -97,12 +97,12 @@ pub const SourceMap = struct {
     }
 };
 
-pub fn build(backing: std.mem.Allocator) !SourceMap {
+pub fn build(backing: std.mem.Allocator, io: std.Io, environ: std.process.Environ) !SourceMap {
     var sm = SourceMap.init(backing);
     if (builtin.os.tag == .windows) {
         try buildWindows(&sm);
     } else {
-        try buildUnix(&sm);
+        try buildUnix(&sm, io, environ);
     }
     return sm;
 }
@@ -204,7 +204,7 @@ pub fn readRawUserPathSegments(aa: std.mem.Allocator) ![][]const u8 {
     while (wlen < wbuf.len and wbuf[wlen] != 0) wlen += 1;
     const raw_utf8 = try std.unicode.utf16LeToUtf8Alloc(aa, wbuf[0..wlen]);
 
-    var list = std.ArrayList([]const u8){};
+    var list: std.ArrayList([]const u8) = .empty;
     var it = std.mem.splitScalar(u8, raw_utf8, ';');
     while (it.next()) |seg| {
         const trimmed = std.mem.trim(u8, seg, " \t");
@@ -258,10 +258,10 @@ pub fn setupWindowsConsole() bool {
 
 // ── Unix implementation ───────────────────────────────────────────────────
 
-fn buildUnix(sm: *SourceMap) !void {
+fn buildUnix(sm: *SourceMap, io: std.Io, environ: std.process.Environ) !void {
     const aa = sm.arena.allocator();
 
-    const home_raw = std.posix.getenv("HOME") orelse "";
+    const home_raw = environ.getPosix("HOME") orelse "";
     const home = stripTrailingSlash(home_raw);
 
     // /etc files first
@@ -270,7 +270,7 @@ fn buildUnix(sm: *SourceMap) !void {
         .{ "/etc/profile.d/apps-bin-path.sh", "/etc/profile.d/" },
     };
     for (etc_files) |pair| {
-        parseShellConfig(sm, aa, pair[0], pair[1], home) catch {};
+        parseShellConfig(sm, aa, pair[0], pair[1], home, io) catch {};
     }
 
     // Home-relative shell config files
@@ -286,7 +286,7 @@ fn buildUnix(sm: *SourceMap) !void {
     };
     for (rel_files) |pair| {
         const full_path = try std.fmt.allocPrint(aa, "{s}{s}", .{ home, pair[0] });
-        parseShellConfig(sm, aa, full_path, pair[1], home) catch {};
+        parseShellConfig(sm, aa, full_path, pair[1], home, io) catch {};
     }
 }
 
@@ -296,18 +296,24 @@ fn parseShellConfig(
     path: []const u8,
     label: []const u8,
     home: []const u8,
+    _: std.Io,
 ) !void {
-    const file = std.fs.openFileAbsolute(path, .{}) catch return;
-    defer file.close();
+    const path_z = try aa.dupeZ(u8, path);
+    const fd = std.posix.openatZ(std.os.linux.AT.FDCWD, path_z, .{ .ACCMODE = .RDONLY }, 0) catch return;
+    defer _ = std.os.linux.close(fd);
 
-    var buf: [4096]u8 = undefined;
-    var fr = file.readerStreaming(&buf);
+    // Read entire file into a single allocation
+    var content: std.ArrayList(u8) = .empty;
+    var read_buf: [4096]u8 = undefined;
     while (true) {
-        const line_raw = fr.interface.takeDelimiterExclusive('\n') catch |e| switch (e) {
-            error.EndOfStream => break,
-            else => return e,
-        };
-        const line = std.mem.trimRight(u8, line_raw, "\r\n");
+        const n = try std.posix.read(fd, &read_buf);
+        if (n == 0) break;
+        try content.appendSlice(aa, read_buf[0..n]);
+    }
+
+    var it = std.mem.splitScalar(u8, content.items, '\n');
+    while (it.next()) |line_raw| {
+        const line = std.mem.trimEnd(u8, line_raw, "\r\n");
         try parsePathLine(sm, aa, line, label, home);
     }
 }
@@ -319,7 +325,7 @@ fn parsePathLine(
     label: []const u8,
     home: []const u8,
 ) !void {
-    const trimmed = std.mem.trimLeft(u8, line, " \t");
+    const trimmed = std.mem.trimStart(u8, line, " \t");
     if (trimmed.len == 0 or trimmed[0] == '#') return;
 
     var value: []const u8 = undefined;
@@ -366,7 +372,7 @@ fn expandVarsUnix(aa: std.mem.Allocator, s: []const u8, home: []const u8) ![]con
     }
 
     // Single-pass $HOME / ${HOME} expansion
-    var out = std.ArrayList(u8){};
+    var out: std.ArrayList(u8) = .empty;
     var i: usize = 0;
     while (i < s.len) {
         if (s[i] == '$') {

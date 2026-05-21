@@ -4,15 +4,15 @@ const args = @import("args.zig");
 const audit = @import("audit.zig");
 const source = @import("source.zig");
 
-pub fn runClean(cfg: args.Config, writer: anytype, allocator: std.mem.Allocator) !void {
+pub fn runClean(cfg: args.Config, writer: anytype, allocator: std.mem.Allocator, io: std.Io, environ_map: *std.process.Environ.Map) !void {
     if (builtin.os.tag != .windows) {
         try writer.writeAll("ph: clean is only supported on Windows\n");
         return error.UnsupportedPlatform;
     }
-    try runCleanWindows(cfg, writer, allocator);
+    try runCleanWindows(cfg, writer, allocator, io, environ_map);
 }
 
-fn runCleanWindows(cfg: args.Config, writer: anytype, backing: std.mem.Allocator) !void {
+fn runCleanWindows(cfg: args.Config, writer: anytype, backing: std.mem.Allocator, io: std.Io, environ_map: *std.process.Environ.Map) !void {
     const cross: []const u8 = if (cfg.no_color) "x" else "\xe2\x9c\x97"; // ✗
     const warn: []const u8 = if (cfg.no_color) "!" else "\xe2\x9a\xa0"; // ⚠
     const dash: []const u8 = if (cfg.no_color) "-" else "\xe2\x80\x94"; // —
@@ -21,11 +21,11 @@ fn runCleanWindows(cfg: args.Config, writer: anytype, backing: std.mem.Allocator
     defer arena.deinit();
     const aa = arena.allocator();
 
-    const raw_path = std.process.getEnvVarOwned(aa, "PATH") catch {
+    const raw_path = environ_map.get("PATH") orelse {
         try writer.writeAll("ph: PATH is not set or empty\n");
         return error.MissingEnv;
     };
-    try runCleanWithPath(raw_path, cross, warn, dash, writer, aa);
+    try runCleanWithPath(raw_path, cross, warn, dash, writer, aa, io);
 }
 
 fn runCleanWithPath(
@@ -35,10 +35,11 @@ fn runCleanWithPath(
     dash: []const u8,
     writer: anytype,
     aa: std.mem.Allocator,
+    io: std.Io,
 ) !void {
-    var sm = try source.build(aa);
+    var sm = try source.build(aa, io, std.process.Environ.empty);
     defer sm.deinit();
-    var auditor = audit.Auditor.init(aa, &sm);
+    var auditor = audit.Auditor.init(aa, &sm, io);
     defer auditor.deinit();
 
     const entries = try auditor.scan(raw_path);
@@ -61,7 +62,7 @@ fn runCleanWithPath(
     try writer.writeAll("Dead entries to remove:\n\n");
 
     // Collect dead User paths (lowercased for registry comparison)
-    var dead_keys = std.ArrayList([]const u8){};
+    var dead_keys: std.ArrayList([]const u8) = .empty;
 
     if (n_user > 0) {
         try writer.writeAll("  [User]\n");
@@ -109,7 +110,7 @@ fn runCleanWithPath(
 
     // Read confirmation from stdin
     var stdin_buf: [64]u8 = undefined;
-    var sr = std.fs.File.stdin().readerStreaming(&stdin_buf);
+    var sr = std.Io.File.stdin().readerStreaming(io, &stdin_buf);
     const answer = blk: {
         const line = sr.interface.takeDelimiterExclusive('\n') catch |e| switch (e) {
             error.EndOfStream => break :blk "",
@@ -125,7 +126,7 @@ fn runCleanWithPath(
 
     // Read raw registry segments, filter out dead ones
     const raw_segs = try source.readRawUserPathSegments(aa);
-    var surviving = std.ArrayList([]const u8){};
+    var surviving: std.ArrayList([]const u8) = .empty;
 
     for (raw_segs) |seg| {
         // Expand and normalize to get the lowercase key

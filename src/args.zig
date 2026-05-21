@@ -8,7 +8,7 @@ pub const Config = struct {
     only_dead: bool = false,
 };
 
-pub fn parseArgs(args: []const [:0]u8) Config {
+pub fn parseArgs(args: []const [:0]const u8) Config {
     var cfg = Config{};
     for (args) |arg| {
         if (std.mem.eql(u8, arg, "clean")) {

@@ -16,9 +16,9 @@ pub fn build(b: *std.Build) void {
     });
 
     if (target.result.os.tag == .windows) {
-        exe.linkSystemLibrary("advapi32");
-        exe.linkSystemLibrary("user32");
-        exe.linkLibC();
+        exe_mod.linkSystemLibrary("advapi32", .{});
+        exe_mod.linkSystemLibrary("user32", .{});
+        exe_mod.link_libc = true;
     }
 
     b.installArtifact(exe);
@@ -34,9 +34,9 @@ pub fn build(b: *std.Build) void {
     });
 
     if (target.result.os.tag == .windows) {
-        unit_tests.linkSystemLibrary("advapi32");
-        unit_tests.linkSystemLibrary("user32");
-        unit_tests.linkLibC();
+        test_mod.linkSystemLibrary("advapi32", .{});
+        test_mod.linkSystemLibrary("user32", .{});
+        test_mod.link_libc = true;
     }
 
     const run_unit_tests = b.addRunArtifact(unit_tests);

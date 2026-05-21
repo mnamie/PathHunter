@@ -7,20 +7,18 @@ const audit = @import("audit.zig");
 const display = @import("display.zig");
 const clean = @import("clean.zig");
 
-pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
+pub fn main(init: std.process.Init) !void {
+    const allocator = init.gpa;
 
-    const argv = try std.process.argsAlloc(allocator);
-    defer std.process.argsFree(allocator, argv);
+    var args_arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer args_arena.deinit();
+    const argv = try init.minimal.args.toSlice(args_arena.allocator());
 
     var cfg = args_mod.parseArgs(argv[1..]);
 
-    // Set up buffered stdout with the 0.15 File.Writer API
-    const stdout_file = std.fs.File.stdout();
+    const stdout_file = std.Io.File.stdout();
     var stdout_buf: [8192]u8 = undefined;
-    var fw = stdout_file.writer(&stdout_buf);
+    var fw = stdout_file.writer(init.io, &stdout_buf);
     defer fw.interface.flush() catch {};
     const writer = &fw.interface;
 
@@ -31,7 +29,7 @@ pub fn main() !void {
 
     // Unix: disable colour when stdout is not a TTY
     if (builtin.os.tag != .windows and !cfg.no_color) {
-        if (!std.posix.isatty(stdout_file.handle)) cfg.no_color = true;
+        if (!(stdout_file.isTty(init.io) catch false)) cfg.no_color = true;
     }
 
     switch (cfg.command) {
@@ -40,7 +38,7 @@ pub fn main() !void {
             return;
         },
         .clean => {
-            try clean.runClean(cfg, writer, allocator);
+            try clean.runClean(cfg, writer, allocator, init.io, init.environ_map);
             return;
         },
         .audit => {},
@@ -54,19 +52,19 @@ pub fn main() !void {
 
     const raw_path: []const u8 = blk: {
         if (builtin.os.tag != .windows) {
-            if (std.posix.getenv("PATH")) |p| break :blk p;
+            if (init.minimal.environ.getPosix("PATH")) |p| break :blk p;
         } else {
-            if (std.process.getEnvVarOwned(aa, "PATH") catch null) |p| break :blk p;
+            if (init.environ_map.get("PATH")) |p| break :blk p;
         }
         try writer.writeAll("ph: PATH is not set or empty\n");
         fw.interface.flush() catch {};
         std.process.exit(1);
     };
 
-    var sm = try source.build(aa);
+    var sm = try source.build(aa, init.io, init.minimal.environ);
     defer sm.deinit();
 
-    var auditor = audit.Auditor.init(aa, &sm);
+    var auditor = audit.Auditor.init(aa, &sm, init.io);
     defer auditor.deinit();
 
     const entries = try auditor.scan(raw_path);
