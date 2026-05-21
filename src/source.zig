@@ -296,23 +296,14 @@ fn parseShellConfig(
     path: []const u8,
     label: []const u8,
     home: []const u8,
-    _: std.Io,
+    io: std.Io,
 ) !void {
-    const path_z = try aa.dupeZ(u8, path);
-    const fd = std.posix.openatZ(std.os.linux.AT.FDCWD, path_z, .{ .ACCMODE = .RDONLY }, 0) catch return;
-    defer _ = std.os.linux.close(fd);
+    const file = std.Io.Dir.openFileAbsolute(io, path, .{}) catch return;
+    defer file.close(io);
 
-    // Read entire file into a single allocation
-    var content: std.ArrayList(u8) = .empty;
-    var read_buf: [4096]u8 = undefined;
-    while (true) {
-        const n = try std.posix.read(fd, &read_buf);
-        if (n == 0) break;
-        try content.appendSlice(aa, read_buf[0..n]);
-    }
-
-    var it = std.mem.splitScalar(u8, content.items, '\n');
-    while (it.next()) |line_raw| {
+    var buf: [4096]u8 = undefined;
+    var fr = file.readerStreaming(io, &buf);
+    while (try fr.interface.takeDelimiter('\n')) |line_raw| {
         const line = std.mem.trimEnd(u8, line_raw, "\r\n");
         try parsePathLine(sm, aa, line, label, home);
     }
