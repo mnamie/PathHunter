@@ -1,0 +1,33 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pathhunter"
+version = "0.3.0"
+description = "Cross-platform PATH auditor"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+dependencies = []
+
+[project.scripts]
+ph = "pathhunter.__main__:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/pathhunter"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "ruff>=0.9",
+    "pyright[nodejs]>=1.1",
+]
+
+[tool.ruff]
+src = ["src"]
+
+[tool.pyright]
+include = ["src"]
+pythonVersion = "3.11"
+typeCheckingMode = "standard"
