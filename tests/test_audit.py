@@ -9,6 +9,9 @@ class StubSourceMap:
     def lookup(self, key: str) -> str:
         return ""
 
+    def is_user(self, key: str) -> bool:
+        return False
+
 
 def test_ok_entry(tmp_path):
     sm = StubSourceMap()

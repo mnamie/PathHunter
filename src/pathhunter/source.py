@@ -6,12 +6,18 @@ import sys
 class SourceMap:
     def __init__(self) -> None:
         self._map: dict[str, str] = {}
+        self._user: set[str] = set()
 
     def insert(self, key: str, label: str) -> None:
-        self._map.setdefault(key, label)  # first-seen wins
+        self._map.setdefault(key, label)  # first-seen wins for primary label
+        if label == "User":
+            self._user.add(key)
 
     def lookup(self, key: str) -> str:
         return self._map.get(key, "")
+
+    def is_user(self, key: str) -> bool:
+        return key in self._user
 
     def build(self) -> None:
         if sys.platform == "win32":
@@ -23,8 +29,8 @@ class SourceMap:
 # ── Unix ──────────────────────────────────────────────────────────────────────
 
 _ETC_FILES = [
-    ("/etc/environment",                "/etc/environment"),
-    ("/etc/set-environment",            "/etc/set-environment"),
+    ("/etc/environment", "/etc/environment"),
+    ("/etc/set-environment", "/etc/set-environment"),
     ("/etc/profile.d/apps-bin-path.sh", "/etc/profile.d/"),
 ]
 
@@ -179,6 +185,38 @@ if sys.platform == "win32":
         except OSError:
             return False
 
+    _SYSTEM_ENV_KEY = r"SYSTEM\CurrentControlSet\Control\Session Manager\Environment"
+
+    def is_admin() -> bool:
+        try:
+            return bool(_ctypes.windll.shell32.IsUserAnAdmin())
+        except OSError:
+            return False
+
+    def read_raw_system_path_segments() -> list[str]:
+        try:
+            with _winreg.OpenKey(
+                _winreg.HKEY_LOCAL_MACHINE, _SYSTEM_ENV_KEY, 0, _winreg.KEY_READ
+            ) as key:
+                raw, _ = _winreg.QueryValueEx(key, "Path")
+        except OSError:
+            return []
+        return [s.strip() for s in raw.split(";") if s.strip()]
+
+    def write_system_path_to_registry(segs: list[str]) -> bool:
+        joined = ";".join(segs)
+        try:
+            with _winreg.OpenKey(
+                _winreg.HKEY_LOCAL_MACHINE,
+                _SYSTEM_ENV_KEY,
+                0,
+                _winreg.KEY_READ | _winreg.KEY_SET_VALUE,
+            ) as key:
+                _winreg.SetValueEx(key, "Path", 0, _winreg.REG_EXPAND_SZ, joined)
+            return True
+        except OSError:
+            return False
+
     def broadcast_env_change() -> None:
         HWND_BROADCAST = 0xFFFF
         WM_SETTINGCHANGE = 0x001A
@@ -211,10 +249,19 @@ if sys.platform == "win32":
 
 else:
     # Stubs so clean.py can import these names on non-Windows without branching
+    def is_admin() -> bool:
+        return False
+
     def read_raw_user_path_segments() -> list[str]:
         return []
 
     def write_user_path_to_registry(segs: list[str]) -> bool:
+        return False
+
+    def read_raw_system_path_segments() -> list[str]:
+        return []
+
+    def write_system_path_to_registry(segs: list[str]) -> bool:
         return False
 
     def broadcast_env_change() -> None:

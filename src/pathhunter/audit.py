@@ -10,6 +10,7 @@ from typing import Optional, Protocol
 
 class _SourceMap(Protocol):
     def lookup(self, key: str) -> str: ...
+    def is_user(self, key: str) -> bool: ...
 
 
 class EntryState(Enum):
@@ -92,6 +93,10 @@ def audit_scan(sm: _SourceMap, raw_path: str) -> list[PathEntry]:
             if count > 1:
                 e.state = EntryState.DUPLICATE
                 e.dup_index = count - 1
+                # If the path is in User registry (even if also in System),
+                # attribute this duplicate to User — it's the redundant copy.
+                if sm.is_user(key):
+                    e.source = "User"
             else:
                 e.state, e.symlink_target = _check_filesystem(normalized)
 
