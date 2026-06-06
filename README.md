@@ -2,23 +2,38 @@
 
 A cross-platform `PATH` auditor. Scans each entry in your `PATH` and reports dead directories, duplicates, symlinks, and empty entries — with colored output and, where possible, the config source that added each entry.
 
-**Windows** — annotates entries as `User` or `System` based on the registry.  
+**Windows** — annotates entries as `User` or `System` based on the registry.
 **Unix** — traces entries back to the shell config file that set them (`.bashrc`, `.zshrc`, etc.).
 
-## Building
+## Requirements
 
-Requires a C99 compiler (`gcc`, `clang`, or MSVC) and `make`.
+[Rust](https://rustup.rs) (stable, 2024 edition) to build. No crate dependencies; the resulting binary has no runtime dependencies.
+
+## Install
+
+Build a standalone executable:
 
 ```sh
-make
-./ph [clean] [--no-color] [--only-dead] [--help]
+cargo build --release
+./target/release/ph --help
 ```
 
-On Windows (MinGW):
+Cross-compiling needs the target's standard library and a linker for it:
 
 ```sh
-make
-ph.exe [clean] [--no-color] [--only-dead] [--help]
+rustup target add x86_64-unknown-linux-musl
+cargo build --release --target x86_64-unknown-linux-musl
+```
+
+For macOS targets from a non-Mac host, [`cargo-zigbuild`](https://github.com/rust-cross/cargo-zigbuild) is the easiest route.
+
+## Development
+
+```sh
+cargo run -- --help                          # run from source
+cargo test                                   # run tests
+cargo fmt --check                            # formatting check
+cargo clippy --all-targets -- -D warnings    # lints
 ```
 
 ## Usage
@@ -36,41 +51,44 @@ ph [clean] [--only-dead] [--no-color] [--help]
 
 ```
 src/
-├── main.c      Entry point — arg parsing, TTY detection, dispatch
-├── args.h/.c   parse_args() → Config { command, only_dead, no_color }
-├── arena.h/.c  Bump allocator — all per-scan strings live here
-├── strutil.h/.c  Path normalization, UTF-8 codepoint counting
-├── source.h/.c SourceMap: maps a normalized path back to where it was set
-│                 Windows — reads HKLM/HKCU registry keys
-│                 Unix    — scans shell config files (.bashrc, .zshrc, …)
-├── audit.h/.c  audit_scan(): classifies each PATH entry via EntryState
-├── display.h/.c  render(): columnar ANSI output + summary line
-└── clean.h/.c  Windows-only: previews dead entries, confirms, rewrites registry
+├── main.rs         Entry point — TTY/console detection, dispatch
+├── args.rs         parse() → Config { command, only_dead, no_color }
+├── source.rs       SourceMap: maps a normalized path back to where it was set
+│                     Unix    — scans shell config files (.bashrc, .zshrc, …)
+│                     Windows — delegates registry reads to winenv.rs
+├── winenv.rs       Windows-only: raw advapi32/user32/shell32/kernel32 extern calls for
+│                     registry read/write, WM_SETTINGCHANGE broadcast, admin
+│                     check, console setup — cfg-gated out of non-Windows builds
+├── expandvars.rs   posix() / windows() — hand-written scanners replicating
+│                     CPython's posixpath/ntpath expandvars (no regex dependency)
+├── audit.rs        scan(): classifies each PATH entry into an EntryState enum
+├── display.rs      render(): columnar ANSI output + summary line
+└── clean.rs        Windows-only: previews dead entries, confirms, rewrites registry
 ```
 
 **Data flow (audit)**
 
 ```
 $PATH string
-    └─ audit_scan()              splits on ; (Windows) or : (Unix)
+    └─ audit::scan()              splits on ; (Windows) or : (Unix)
            └─ classify each segment
-                  ├─ source_map_lookup()   annotates with config source
-                  └─ lstat / GetFileAttributesW → EntryState
-    └─ PathEntry[]
-           └─ render()           prints header, rows, summary
+                  ├─ SourceMap::lookup()          annotates with config source
+                  └─ symlink_metadata/metadata    → EntryState
+    └─ Vec<PathEntry>
+           └─ display::render()   prints header, rows, summary
 ```
 
 **Data flow (clean — Windows only)**
 
 ```
 $PATH string
-    └─ audit_scan()                   same audit pass
+    └─ audit::scan()                              same audit pass
     └─ filter dead entries by source
     └─ preview + confirm prompt
-    └─ read_raw_user_path_segments()  reads unexpanded registry value
+    └─ winenv::read_raw_user_path_segments()      reads unexpanded registry value
     └─ filter surviving segments
-    └─ write_user_path_to_registry()  writes back
-    └─ broadcast_env_change()         WM_SETTINGCHANGE to running processes
+    └─ winenv::write_user_path_to_registry()      writes back
+    └─ winenv::broadcast_env_change()             WM_SETTINGCHANGE to running processes
 ```
 
 ## Output legend

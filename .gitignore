@@ -1,12 +1,6 @@
-# Build output
-build/
-bin/
-
-# Stray object/library files outside build/
-*.o
-*.a
-*.so
-*.d
+# Rust build output
+target/
+dist/
 
 # macOS
 .DS_Store
@@ -14,7 +8,7 @@ bin/
 # Windows
 Thumbs.db
 
-# Editor temporaries
+# Editor
 *.swp
 *.swo
 *~
