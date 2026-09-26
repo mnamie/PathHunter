@@ -100,6 +100,22 @@ fn check_filesystem(path: &str) -> EntryState {
     }
 }
 
+/// macOS mounts OS-managed cryptex volumes (Rapid Security Responses, system
+/// content updates) under this prefix on demand; `/etc/paths.d/10-cryptex`
+/// wires it into PATH unconditionally so it's ready if/when something is
+/// mounted there. It's usually empty — that's expected, not a misconfigured
+/// PATH entry — so it's excluded from the audit entirely rather than
+/// reported as dead.
+#[cfg(target_os = "macos")]
+fn is_macos_managed_plumbing(path: &str) -> bool {
+    path.starts_with("/var/run/com.apple.security.cryptexd/")
+}
+
+#[cfg(not(target_os = "macos"))]
+fn is_macos_managed_plumbing(_path: &str) -> bool {
+    false
+}
+
 /// Splits `raw_path` and classifies each entry, annotating it with the
 /// source label from `sm`.
 pub fn scan(sm: &SourceMap, raw_path: &str) -> Vec<PathEntry> {
@@ -113,6 +129,9 @@ pub fn scan(sm: &SourceMap, raw_path: &str) -> Vec<PathEntry> {
                 state: EntryState::Empty,
                 source: String::new(),
             });
+            continue;
+        }
+        if is_macos_managed_plumbing(seg) {
             continue;
         }
 
@@ -301,6 +320,17 @@ pub(crate) mod tests {
         std::os::unix::fs::symlink("f", tmp.join("flink")).unwrap();
         let entries = scan_empty(&tmp.join("flink"));
         assert_eq!(entries[0].state, EntryState::Dangling);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn cryptex_plumbing_is_excluded_from_scan() {
+        let raw = format!(
+            "/usr/bin{SEP}/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin"
+        );
+        let entries = scan_empty(&raw);
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].path, "/usr/bin");
     }
 
     #[test]

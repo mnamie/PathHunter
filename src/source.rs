@@ -155,12 +155,52 @@ pub fn parse_shell_config(map: &mut SourceMap, path: &str, label: &str, home: &s
     }
 }
 
+/// Parses a `path_helper`-style file: one directory per line, no `PATH=`
+/// assignment, no variable expansion (this is how `/etc/paths` and
+/// `/etc/paths.d/*` are formatted; `/etc/zprofile` feeds them to
+/// `path_helper -s` verbatim to build the default PATH prefix).
+pub fn parse_paths_file(map: &mut SourceMap, path: &str, label: &str) {
+    let Ok(bytes) = fs::read(path) else { return };
+    let content = String::from_utf8_lossy(&bytes);
+    for line in content.split('\n') {
+        let seg = line.trim_matches(WS);
+        if seg.is_empty() || seg.starts_with('#') {
+            continue;
+        }
+        let mut normalized = strip_trailing_slashes(seg);
+        if normalized.is_empty() {
+            normalized = seg;
+        }
+        map.insert(normalized, label);
+    }
+}
+
+/// Parses `/etc/paths` and every file under `/etc/paths.d/`, in the same
+/// alphabetical order `path_helper` reads them in.
+fn build_paths_d(map: &mut SourceMap) {
+    parse_paths_file(map, "/etc/paths", "/etc/paths");
+
+    let Ok(read_dir) = fs::read_dir("/etc/paths.d") else {
+        return;
+    };
+    let mut names: Vec<String> = read_dir
+        .filter_map(|e| e.ok())
+        .filter_map(|e| e.file_name().into_string().ok())
+        .collect();
+    names.sort();
+    for name in names {
+        let label = format!("/etc/paths.d/{name}");
+        parse_paths_file(map, &label, &label);
+    }
+}
+
 fn build_unix(map: &mut SourceMap) {
     let home_raw = std::env::var_os("HOME")
         .map(|h| h.to_string_lossy().into_owned())
         .unwrap_or_default();
     let home = strip_trailing_slashes(&home_raw);
 
+    build_paths_d(map);
     for (path, label) in ETC_FILES {
         parse_shell_config(map, path, label, home);
     }
@@ -344,6 +384,30 @@ mod tests {
             );
             std::fs::remove_dir_all(&dir).unwrap();
             assert_eq!(map.lookup("/custom/tool/bin"), "~/.bashrc");
+        }
+
+        #[test]
+        fn parse_paths_file_one_per_line() {
+            let dir = std::env::temp_dir().join(format!("ph-paths-test-{}", std::process::id()));
+            std::fs::create_dir_all(&dir).unwrap();
+            let file = dir.join("10-cryptex");
+            std::fs::write(&file, "/usr/bin\n\n# comment\n/usr/local/bin/\n").unwrap();
+
+            let mut map = SourceMap::default();
+            parse_paths_file(&mut map, file.to_str().unwrap(), "/etc/paths.d/10-cryptex");
+            std::fs::remove_dir_all(&dir).unwrap();
+
+            assert_eq!(map.lookup("/usr/bin"), "/etc/paths.d/10-cryptex");
+            // Trailing slash is stripped so it matches the normalized PATH key.
+            assert_eq!(map.lookup("/usr/local/bin"), "/etc/paths.d/10-cryptex");
+            assert_eq!(map.lookup("# comment"), "");
+        }
+
+        #[test]
+        fn parse_paths_file_missing_is_noop() {
+            let mut map = SourceMap::default();
+            parse_paths_file(&mut map, "/this/does/not/exist", "nowhere");
+            assert_eq!(map.lookup("/anything"), "");
         }
     }
 }
