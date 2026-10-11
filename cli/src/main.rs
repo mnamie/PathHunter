@@ -1,15 +1,12 @@
 mod args;
-mod audit;
 mod clean;
 mod display;
-mod expandvars;
-mod source;
-mod winenv;
 
 use std::io::{self, BufWriter, IsTerminal, Write};
 use std::process::ExitCode;
 
 use args::Command;
+use pathhunter::{audit, source, winenv};
 
 fn run() -> io::Result<u8> {
     let argv: Vec<String> = std::env::args().skip(1).collect();

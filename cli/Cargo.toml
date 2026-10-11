@@ -1,0 +1,13 @@
+[package]
+name = "pathhunter-cli"
+description = "Cross-platform PATH auditor"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "ph"
+path = "src/main.rs"
+
+[dependencies]
+pathhunter = { path = "../lib" }

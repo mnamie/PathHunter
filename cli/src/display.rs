@@ -1,7 +1,7 @@
 use std::io::{self, Write};
 
 use crate::args::{Config, VERSION};
-use crate::audit::{EntryState, PathEntry};
+use pathhunter::audit::{EntryState, PathEntry};
 
 // ANSI escape sequences
 const RESET: &str = "\x1b[0m";

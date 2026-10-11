@@ -1,79 +1,15 @@
 use std::collections::HashSet;
 use std::io::{self, BufWriter, StdoutLock, Write};
 
-use crate::audit::{self, PathEntry};
-use crate::expandvars;
-use crate::source::SourceMap;
-use crate::winenv;
+use pathhunter::audit;
+use pathhunter::cleanplan::{
+    Plan, cross_dups, dead_key, dedup_segs, entry_noun, extra_noun, intra_dup_info, sum_extra,
+    to_set, without,
+};
+use pathhunter::source::SourceMap;
+use pathhunter::winenv;
 
 type Out<'a> = BufWriter<StdoutLock<'a>>;
-
-fn strip_trailing_seps_win(s: &str) -> &str {
-    s.trim_end_matches(['/', '\\'])
-}
-
-fn norm(s: &str) -> String {
-    strip_trailing_seps_win(&expandvars::windows(s)).to_ascii_lowercase()
-}
-
-fn dead_key(e: &PathEntry) -> String {
-    strip_trailing_seps_win(&e.path).to_ascii_lowercase()
-}
-
-#[derive(Debug)]
-struct DupInfo {
-    display: String,
-    extra: usize,
-}
-
-/// Returns (display_path, extra_count) for paths appearing more than once,
-/// in first-occurrence order.
-fn intra_dup_info(segs: &[String]) -> Vec<DupInfo> {
-    // (key, first display, count) — PATH lists are short, a linear scan is fine.
-    let mut seen: Vec<(String, String, usize)> = Vec::new();
-    for s in segs {
-        let key = norm(s);
-        match seen.iter_mut().find(|(k, _, _)| *k == key) {
-            Some((_, _, count)) => *count += 1,
-            None => {
-                let display = strip_trailing_seps_win(&expandvars::windows(s)).to_owned();
-                seen.push((key, display, 1));
-            }
-        }
-    }
-    seen.into_iter()
-        .filter(|(_, _, count)| *count > 1)
-        .map(|(_, display, count)| DupInfo {
-            display,
-            extra: count - 1,
-        })
-        .collect()
-}
-
-/// Keeps the first occurrence of each path, dropping subsequent duplicates.
-fn dedup_segs(segs: &[String]) -> Vec<String> {
-    let mut seen = HashSet::new();
-    segs.iter()
-        .filter(|s| seen.insert(norm(s)))
-        .cloned()
-        .collect()
-}
-
-fn sum_extra(dups: &[DupInfo]) -> usize {
-    dups.iter().map(|d| d.extra).sum()
-}
-
-fn to_set(segs: &[String]) -> HashSet<String> {
-    segs.iter().map(|s| norm(s)).collect()
-}
-
-/// Segments whose normalized form is not in `remove`.
-fn without(segs: &[String], remove: &HashSet<String>) -> Vec<String> {
-    segs.iter()
-        .filter(|s| !remove.contains(&norm(s)))
-        .cloned()
-        .collect()
-}
 
 /// Returns true if the user answers y. Exits the process on Ctrl-C/EOF,
 /// mirroring the prior implementations' SystemExit(0). Writes (and flushes)
@@ -95,14 +31,6 @@ fn prompt(w: &mut Out, msg: &str) -> bool {
             std::process::exit(0);
         }
     }
-}
-
-fn entry_noun(n: usize) -> &'static str {
-    if n == 1 { "entry" } else { "entries" }
-}
-
-fn extra_noun(n: usize) -> &'static str {
-    if n == 1 { "copy" } else { "copies" }
 }
 
 pub fn run() -> io::Result<u8> {
@@ -134,44 +62,20 @@ fn run_with(w: &mut Out) -> io::Result<u8> {
 
     let mut user_segs = winenv::read_raw_user_path_segments();
     let mut system_segs = winenv::read_raw_system_path_segments();
-    let expanded_user = to_set(&user_segs);
-    let mut expanded_system = to_set(&system_segs);
 
-    // ── Classify dead entries ───────────────────────────────────────────
-    let dead: Vec<&PathEntry> = entries.iter().filter(|e| e.state.is_dead()).collect();
-    let mut user_dead = Vec::new();
-    let mut system_dead = Vec::new();
-    let mut shell_dead = Vec::new();
-    for e in &dead {
-        let key = dead_key(e);
-        if expanded_user.contains(&key) {
-            user_dead.push(*e);
-        } else if expanded_system.contains(&key) {
-            system_dead.push(*e);
-        } else {
-            shell_dead.push(*e);
-        }
-    }
-
-    // ── Cross-registry duplicates: User entries already in System PATH ──
-    let mut user_cross_dups: Vec<String> = user_segs
-        .iter()
-        .filter(|s| expanded_system.contains(&norm(s)))
-        .cloned()
-        .collect();
-
-    // ── Intra-registry duplicates ────────────────────────────────────────
-    let mut user_intra_dups = intra_dup_info(&user_segs);
-    let mut system_intra_dups = intra_dup_info(&system_segs);
-
-    let any_actionable = !user_dead.is_empty()
-        || !user_cross_dups.is_empty()
-        || !user_intra_dups.is_empty()
-        || (admin && (!system_dead.is_empty() || !system_intra_dups.is_empty()));
-    let any_issue = !dead.is_empty()
-        || !user_cross_dups.is_empty()
-        || !user_intra_dups.is_empty()
-        || !system_intra_dups.is_empty();
+    let plan = Plan::build(&entries, &user_segs, &system_segs, admin);
+    let any_actionable = plan.any_actionable();
+    let any_issue = plan.any_issue();
+    let Plan {
+        dead,
+        user_dead,
+        system_dead,
+        shell_dead,
+        mut user_cross_dups,
+        mut user_intra_dups,
+        mut system_intra_dups,
+        ..
+    } = plan;
 
     if !any_issue {
         writeln!(w, "Nothing to clean.")?;
@@ -263,7 +167,7 @@ fn run_with(w: &mut Out) -> io::Result<u8> {
             w,
             &format!("Remove {n} dead User PATH {}? [y/N] ", entry_noun(n)),
         ) {
-            let dead_keys: HashSet<String> = user_dead.iter().map(|e| dead_key(e)).collect();
+            let dead_keys: HashSet<String> = user_dead.iter().map(dead_key).collect();
             user_segs = without(&user_segs, &dead_keys);
             winenv::write_user_path_to_registry(&user_segs);
             changed = true;
@@ -278,7 +182,7 @@ fn run_with(w: &mut Out) -> io::Result<u8> {
             w,
             &format!("Remove {n} dead System PATH {}? [y/N] ", entry_noun(n)),
         ) {
-            let dead_keys: HashSet<String> = system_dead.iter().map(|e| dead_key(e)).collect();
+            let dead_keys: HashSet<String> = system_dead.iter().map(dead_key).collect();
             system_segs = without(&system_segs, &dead_keys);
             winenv::write_system_path_to_registry(&system_segs);
             changed = true;
@@ -289,12 +193,7 @@ fn run_with(w: &mut Out) -> io::Result<u8> {
     // ── Cross-registry duplicates: User→System ─────────────────────────────
     if !user_cross_dups.is_empty() {
         // Recompute after possible dead removal above
-        expanded_system = to_set(&system_segs);
-        user_cross_dups = user_segs
-            .iter()
-            .filter(|s| expanded_system.contains(&norm(s)))
-            .cloned()
-            .collect();
+        user_cross_dups = cross_dups(&user_segs, &system_segs);
         if !user_cross_dups.is_empty() {
             let n = user_cross_dups.len();
             if prompt(
@@ -357,70 +256,4 @@ fn run_with(w: &mut Out) -> io::Result<u8> {
     }
 
     Ok(0)
-}
-
-// ── Tests ────────────────────────────────────────────────────────────────
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn segs(v: &[&str]) -> Vec<String> {
-        v.iter().map(|s| s.to_string()).collect()
-    }
-
-    #[test]
-    fn intra_dup_info_no_duplicates() {
-        assert!(intra_dup_info(&segs(&["C:\\a", "C:\\b", "C:\\c"])).is_empty());
-    }
-
-    #[test]
-    fn intra_dup_info_finds_duplicates() {
-        let got = intra_dup_info(&segs(&["C:\\a", "C:\\b", "C:\\a", "C:\\a"]));
-        assert_eq!(got.len(), 1);
-        assert_eq!(got[0].display, "C:\\a");
-        assert_eq!(got[0].extra, 2);
-    }
-
-    #[test]
-    fn intra_dup_info_preserves_first_occurrence_casing() {
-        let got = intra_dup_info(&segs(&["C:\\Foo", "c:\\foo", "C:\\Bar"]));
-        assert_eq!(got.len(), 1);
-        assert_eq!(got[0].display, "C:\\Foo");
-        assert_eq!(got[0].extra, 1);
-    }
-
-    #[test]
-    fn dedup_segs_keeps_first_occurrence() {
-        let got = dedup_segs(&segs(&["C:\\Foo", "C:\\Bar", "c:\\foo", "C:\\Bar\\"]));
-        assert_eq!(got, segs(&["C:\\Foo", "C:\\Bar"]));
-    }
-
-    #[test]
-    fn sum_extra_adds_up() {
-        let dups = [
-            DupInfo {
-                display: String::new(),
-                extra: 2,
-            },
-            DupInfo {
-                display: String::new(),
-                extra: 1,
-            },
-            DupInfo {
-                display: String::new(),
-                extra: 3,
-            },
-        ];
-        assert_eq!(sum_extra(&dups), 6);
-    }
-
-    #[test]
-    fn without_removes_normalized_matches() {
-        let remove = to_set(&segs(&["c:\\dead\\"]));
-        assert_eq!(
-            without(&segs(&["C:\\Dead", "C:\\Live"]), &remove),
-            segs(&["C:\\Live"])
-        );
-    }
 }

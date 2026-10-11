@@ -1,0 +1,8 @@
+[package]
+name = "pathhunter"
+description = "PathHunter core: PATH scanning, source attribution, clean planning"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+# Zero dependencies — keep it that way.

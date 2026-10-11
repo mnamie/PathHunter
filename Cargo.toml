@@ -1,13 +1,14 @@
-[package]
-name = "pathhunter"
+[workspace]
+resolver = "3"
+members = ["lib", "cli", "gui"]
+# Plain `cargo build`/`cargo run`/`cargo test` cover only the library and `ph`;
+# use `--workspace` or `-p pathhunter-gui` for the GUI.
+default-members = ["lib", "cli"]
+
+[workspace.package]
 version = "0.3.0"
 edition = "2024"
-description = "Cross-platform PATH auditor"
 publish = false
-
-[[bin]]
-name = "ph"
-path = "src/main.rs"
 
 [profile.release]
 opt-level = "z"

@@ -5,9 +5,11 @@ A cross-platform `PATH` auditor. Scans each entry in your `PATH` and reports dea
 **Windows** — annotates entries as `User` or `System` based on the registry.
 **Unix** — traces entries back to the shell config file that set them (`.bashrc`, `.zshrc`, etc.).
 
+There's also **`ph-gui`**, a desktop app (egui) with the same audit as a searchable, filterable table and, on Windows, a clean-up panel: tick the dead/duplicate entries to remove, review them in a confirmation dialog, and apply.
+
 ## Requirements
 
-[Rust](https://rustup.rs) (stable, 2024 edition) to build. No crate dependencies; the resulting binary has no runtime dependencies.
+[Rust](https://rustup.rs) (stable, 2024 edition) to build. The `ph` CLI has no crate dependencies and the resulting binary has no runtime dependencies. `ph-gui` uses [eframe](https://crates.io/crates/eframe).
 
 ## Install
 
@@ -16,6 +18,9 @@ Build a standalone executable:
 ```sh
 cargo build --release
 ./target/release/ph --help
+
+cargo build --release -p pathhunter-gui   # GUI
+./target/release/ph-gui
 ```
 
 Cross-compiling needs the target's standard library and a linker for it:
@@ -30,10 +35,11 @@ For macOS targets from a non-Mac host, [`cargo-zigbuild`](https://github.com/rus
 ## Development
 
 ```sh
-cargo run -- --help                          # run from source
-cargo test                                   # run tests
-cargo fmt --check                            # formatting check
-cargo clippy --all-targets -- -D warnings    # lints
+cargo run -- --help                                    # run CLI from source
+cargo run -p pathhunter-gui                            # run GUI from source
+cargo test --workspace                                 # run tests
+cargo fmt --all --check                                # formatting check
+cargo clippy --workspace --all-targets -- -D warnings  # lints
 ```
 
 ## Usage
@@ -49,10 +55,11 @@ ph [clean] [--only-dead] [--no-color] [--help]
 
 ## Architecture
 
+Three crates in one Cargo workspace; the CLI and GUI each depend on the library.
+
 ```
-src/
-├── main.rs         Entry point — TTY/console detection, dispatch
-├── args.rs         parse() → Config { command, only_dead, no_color }
+lib/src/            (`pathhunter` library, zero deps)
+├── lib.rs          Library root — re-exports the core modules below
 ├── source.rs       SourceMap: maps a normalized path back to where it was set
 │                     Unix    — scans shell config files (.bashrc, .zshrc, …)
 │                     Windows — delegates registry reads to winenv.rs
@@ -62,8 +69,19 @@ src/
 ├── expandvars.rs   posix() / windows() — hand-written scanners replicating
 │                     CPython's posixpath/ntpath expandvars (no regex dependency)
 ├── audit.rs        scan(): classifies each PATH entry into an EntryState enum
+└── cleanplan.rs    Pure clean logic: Plan::build() classification, apply(Selection)
+
+cli/src/            (`pathhunter-cli` → `ph`, zero deps beyond the library)
+├── main.rs         CLI entry point — TTY/console detection, dispatch
+├── args.rs         parse() → Config { command, only_dead, no_color }
 ├── display.rs      render(): columnar ANSI output + summary line
-└── clean.rs        Windows-only: previews dead entries, confirms, rewrites registry
+└── clean.rs        CLI clean flow: report, y/N prompts, rewrites registry
+
+gui/src/            (`pathhunter-gui` → `ph-gui`, egui/eframe)
+├── main.rs         Window setup
+├── app.rs          Scan state, top bar, summary cards, filters, entry table
+├── clean_view.rs   Clean-up side panel + confirmation dialog
+└── theme.rs        Dark/light palettes and styling
 ```
 
 **Data flow (audit)**
